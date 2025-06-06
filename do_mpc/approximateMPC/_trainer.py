@@ -178,6 +178,8 @@ class Trainer:
         Returns:
             (torch.tensor, torch.tensor): _description_
         """
+        # Check setup.
+        assert self.flags['setup'] == True, 'MPC was not setup yet. Please call Trainer.setup().'
         x_shift = self.approx_mpc.x_shift  # torch.tensor(lbx)
         x_range = self.approx_mpc.x_range  # torch.tensor(ubx - lbx)
         y_shift = self.approx_mpc.y_shift  # torch.tensor(lbu)
@@ -196,8 +198,12 @@ class Trainer:
         Returns:
             (torch.utils.data.dataloader.DataLoader, torch.utils.data.dataloader.DataLoader, torch.optim.adam.Adam): Returns the relevant data loaders and the optimizer.
         """
+        # Check setup.
+        assert self.flags['setup'] == True, 'MPC was not setup yet. Please call Trainer.setup().'
+
         data_dir = self.settings.data_dir
-        n_samples = self.settings.n_samples
+        dataset_name = self.settings.dataset_name
+
         val = self.settings.val
         batch_size = self.settings.batch_size
         shuffle = self.settings.shuffle
@@ -206,7 +212,7 @@ class Trainer:
         # self.dir = Path()
         self.hyperparameters = {}
         self.hyperparameters["data_dir"] = self.settings.data_dir
-        self.hyperparameters["n_samples"] = self.settings.n_samples
+        self.hyperparameters["dataset_name"] = self.settings.dataset_name
         self.hyperparameters["scheduler_flag"] = self.settings.scheduler_flag
         self.hyperparameters["lr_reduce_factor"] = self.scheduler_settings.factor
         self.hyperparameters["lr_scheduler_patience"] = self.scheduler_settings.patience
@@ -220,17 +226,19 @@ class Trainer:
         # saving hyperparameters as a json
 
         json_dir = Path(self.settings.results_dir).joinpath(
-            "results_n_" + str(self.settings.n_samples), "hyperparameters.json"
+            "results_" + dataset_name, "hyperparameters.json"
         )
 
         # Ensure the directory exists, if not create it
-        Path(self.settings.results_dir).joinpath("results_n_" + str(self.settings.n_samples)).mkdir(parents=True, exist_ok=True)
+        Path(self.settings.results_dir).joinpath("results_" + dataset_name).mkdir(parents=True, exist_ok=True)
 
         with open(json_dir, "w") as f:
             json.dump(self.hyperparameters, f, indent=4)
 
         data_dir = Path(data_dir)
-        data_dir = data_dir.joinpath("data_n" + str(n_samples) + "_opt.pkl")
+        data_dir = data_dir.joinpath(dataset_name)
+        data_dir = data_dir.joinpath("data_" + dataset_name + "_opt.pkl")
+
         print(f"Path from trainer to sampled files\n {data_dir}")
         with open(data_dir, "rb") as f:
             dataset = pkl.load(f)
@@ -250,11 +258,8 @@ class Trainer:
             x = torch.cat((x0, u_prev), dim=1)
         else:
             x = x0
-        if self.approx_mpc.settings.scaling:
-            x_scaled, u0_scaled = self.scale_dataset(x, u0)
-        else:
-            x_scaled=x.type(self.approx_mpc.torch_data_type)
-            u0_scaled=u0.type(self.approx_mpc.torch_data_type)
+
+        x_scaled, u0_scaled = self.scale_dataset(x, u0)
         data = TensorDataset(x_scaled, u0_scaled)
         training_data, val_data = random_split(
             data, [1 - val, val], generator=self.generator
@@ -319,16 +324,16 @@ class Trainer:
             None: None
         """
         pathlib.Path(self.settings.results_dir).joinpath(
-            "results_n_" + str(self.settings.n_samples)
+            "results_" + self.settings.dataset_name
         ).mkdir(parents=True, exist_ok=True)
         if self.settings.save_history:
             assert self.settings.data_dir is not None, "exp_pth must be provided."
 
             file_path_hist = Path(self.settings.results_dir).joinpath(
-                "results_n_" + str(self.settings.n_samples), "training_history.json"
+                "results_" + self.settings.dataset_name, "training_history.json"
             )
             file_path_app = Path(self.settings.results_dir).joinpath(
-                "results_n_" + str(self.settings.n_samples), "approx_mpc.pth"
+                "results_" + self.settings.dataset_name, "approx_mpc.pth"
             )
             self.approx_mpc.save_to_state_dict(file_path_app)
             # Save to a JSON file
@@ -365,7 +370,7 @@ class Trainer:
                 assert self.settings.data_dir is not None, "exp_pth must be provided."
                 fig.savefig(
                     Path(self.settings.results_dir).joinpath(
-                        "results_n_" + str(self.settings.n_samples),
+                        "results_" + self.settings.dataset_name,
                         "training_history.png",
                     )
                 )
@@ -452,6 +457,9 @@ class Trainer:
         Returns:
             None: None
         """
+        # Check setup.
+        assert self.flags['setup'] == True, 'MPC was not setup yet. Please call Trainer.setup().'
+
         n_epochs = self.settings.n_epochs
         train_dataloader, test_dataloader, optimizer = self.load_data()
 
